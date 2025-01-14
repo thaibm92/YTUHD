@@ -41,13 +41,6 @@ static void hookFormats(MLABRPolicy *self) {
     %orig;
 }
 
-- (void)loadWithInitialSeekRequired:(bool)required {
-    MLInnerTubePlayerConfig *config = [self valueForKey:@"_config"];
-    YTIMediaCommonConfig *mediaCommonConfig = config.mediaCommonConfig;
-    mediaCommonConfig.useServerDrivenAbr = NO;
-    %orig;
-}
-
 %end
 
 %hook MLABRPolicy
@@ -91,6 +84,10 @@ static void hookFormats(MLABRPolicy *self) {
     return YES;
 }
 
+- (BOOL)iosPlayerClientSharedConfigDisableServerDrivenAbr {
+    return YES;
+}
+
 %end
 
 %hook HAMDefaultABRPolicy
@@ -105,6 +102,17 @@ static void hookFormats(MLABRPolicy *self) {
         MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config") = config;
     } @catch (id ex) {}
     %orig;
+}
+
+%end
+
+%hook MLHLSStreamSelector
+
+- (void)didLoadHLSMasterPlaylist:(id)arg1 {
+    %orig;
+    MLHLSMasterPlaylist *playlist = [self valueForKey:@"_completeMasterPlaylist"];
+    NSArray *remotePlaylists = [playlist remotePlaylists];
+    [[self delegate] streamSelectorHasSelectableVideoFormats:remotePlaylists];
 }
 
 %end

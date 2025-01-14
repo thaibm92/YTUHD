@@ -2,14 +2,16 @@
 #import <rootless.h>
 #import <VideoToolbox/VideoToolbox.h>
 #import <YouTubeHeader/YTHotConfig.h>
-#import <YouTubeHeader/YTSettingsViewController.h>
 #import <YouTubeHeader/YTSettingsSectionItem.h>
 #import <YouTubeHeader/YTSettingsSectionItemManager.h>
+#import <YouTubeHeader/YTSettingsViewController.h>
 
 #define LOC(x) [tweakBundle localizedStringForKey:x value:nil table:nil]
 
 BOOL UseVP9() {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:UseVP9Key];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    id value = [defaults objectForKey:UseVP9Key];
+    return value ? [value boolValue] : YES;
 }
 
 BOOL AllVP9() {
@@ -21,10 +23,7 @@ NSBundle *YTUHDBundle() {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSString *tweakBundlePath = [[NSBundle mainBundle] pathForResource:@"YTUHD" ofType:@"bundle"];
-        if (tweakBundlePath)
-            bundle = [NSBundle bundleWithPath:tweakBundlePath];
-        else
-            bundle = [NSBundle bundleWithPath:ROOT_PATH_NS(@"/Library/Application Support/YTUHD.bundle")];
+        bundle = [NSBundle bundleWithPath:tweakBundlePath ?: ROOT_PATH_NS(@"/Library/Application Support/YTUHD.bundle")];
     });
     return bundle;
 }
