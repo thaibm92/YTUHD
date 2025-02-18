@@ -1,8 +1,16 @@
 #import <substrate.h>
+#import <sys/sysctl.h>
+#import <version.h>
 #import "Header.h"
 
-extern "C" BOOL UseVP9();
-extern "C" BOOL AllVP9();
+extern "C" {
+    BOOL UseVP9();
+    BOOL AllVP9();
+    int DecodeThreads();
+    BOOL SkipLoopFilter();
+    BOOL LoopFilterOptimization();
+    BOOL RowThreading();
+}
 
 // Remove any <= 1080p VP9 formats if AllVP9 is disabled
 NSArray <MLFormat *> *filteredFormats(NSArray <MLFormat *> *formats) {
@@ -65,19 +73,39 @@ static void hookFormats(MLABRPolicy *self) {
 
 %end
 
-%hook YTHotConfig
+%hook YTIHamplayerHotConfig
 
-- (BOOL)iosClientGlobalConfigEnableNewMlabrpolicy {
-    return NO;
+%new(i@:)
+- (int)libvpxDecodeThreads {
+    return DecodeThreads();
 }
 
-- (BOOL)iosPlayerClientSharedConfigEnableNewMlabrpolicy {
-    return NO;
+%new(B@:)
+- (BOOL)libvpxRowThreading {
+    return RowThreading();
 }
 
-- (BOOL)iosPlayerClientSharedConfigPostponeCabrPreferredFormatFiltering {
+%new(B@:)
+- (BOOL)libvpxSkipLoopFilter {
+    return SkipLoopFilter();
+}
+
+%new(B@:)
+- (BOOL)libvpxLoopFilterOptimization {
+    return LoopFilterOptimization();
+}
+
+%end
+
+%hook YTColdConfig
+
+- (BOOL)mainAppCoreClientIosStartupSchedulerQosFriendlyHardwareDecodeSupportedEnabled {
     return YES;
 }
+
+%end
+
+%hook YTHotConfig
 
 - (BOOL)iosPlayerClientSharedConfigDisableServerDrivenAbr {
     return YES;
@@ -112,7 +140,46 @@ static void hookFormats(MLABRPolicy *self) {
 
 %end
 
+%group Spoofing
+
+%hook UIDevice
+
+- (NSString *)systemVersion {
+    return @"15.8.3";
+}
+
+%end
+
+%hook NSProcessInfo
+
+- (NSOperatingSystemVersion)operatingSystemVersion {
+    NSOperatingSystemVersion version;
+    version.majorVersion = 15;
+    version.minorVersion = 8;
+    version.patchVersion = 3;
+    return version;
+}
+
+%end
+
+%hookf(int, sysctlbyname, const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
+    if (strcmp(name, "kern.osversion") == 0) {
+        if (oldp)
+            strcpy((char *)oldp, IOS_BUILD);
+        *oldlenp = strlen(IOS_BUILD);
+    }
+    return %orig(name, oldp, oldlenp, newp, newlen);
+}
+
+%end
+
 %ctor {
+    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+        DecodeThreadsKey: @2
+    }];
     if (!UseVP9()) return;
     %init;
+    if (!IS_IOS_OR_NEWER(iOS_15_0)) {
+        %init(Spoofing);
+    }
 }
