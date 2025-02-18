@@ -35,6 +35,13 @@ jobs:
           ref: main
           path: YouTubeHeader
 
+      - name: Checkout PoomSmart/PSHeader
+        uses: actions/checkout@main
+        with:
+          repository: PoomSmart/PSHeader
+          ref: master
+          path: PSHeader
+
       - name: Checkout thaibm92/YTVideoOverlay
         uses: actions/checkout@main
         with:
