@@ -1,16 +1,20 @@
 #ifndef YTUHD_H_
 #define YTUHD_H_
 
-#import <YouTubeHeader/HAMDefaultABRPolicy.h>
-#import <YouTubeHeader/HAMDefaultABRPolicyConfig.h>
+// #import <YouTubeHeader/HAMDefaultABRPolicy.h>
+// #import <YouTubeHeader/HAMDefaultABRPolicyConfig.h>
 #import <YouTubeHeader/MLABRPolicyNew.h>
 #import <YouTubeHeader/MLABRPolicyOld.h>
 #import <YouTubeHeader/MLHAMPlayerItem.h>
+#import <YouTubeHeader/MLHAMQueuePlayer.h>
 #import <YouTubeHeader/MLHLSMasterPlaylist.h>
 #import <YouTubeHeader/MLHLSStreamSelector.h>
 #import <YouTubeHeader/MLVideo.h>
 #import <YouTubeHeader/YTIHamplayerConfig.h>
 #import <YouTubeHeader/YTIHamplayerSoftwareStreamFilter.h>
+#import <YouTubeHeader/YTLocalPlaybackController.h>
+#import <YouTubeHeader/YTSingleVideoController.h>
+#import <YouTubeHeader/YTPlayerTapToRetryResponderEvent.h>
 
 #define IOS_BUILD "19H390"
 #define MAX_FPS 60

@@ -16,15 +16,15 @@ extern "C" {
 NSArray <MLFormat *> *filteredFormats(NSArray <MLFormat *> *formats) {
     if (AllVP9()) return formats;
     NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(MLFormat *format, NSDictionary *bindings) {
-        BOOL isUHD = [format height] > 1080;
-        BOOL isUHDCodec = [[format MIMEType] videoCodec] == 'vp09' || [[format MIMEType] videoCodec] == 'av01';
-        return isUHD || !isUHDCodec;
+        NSString *qualityLabel = [format qualityLabel];
+        BOOL isHighRes = [qualityLabel hasPrefix:@"2160p"] || [qualityLabel hasPrefix:@"1440p"];
+        BOOL isVP9orAV1 = [[format MIMEType] videoCodec] == 'vp09' || [[format MIMEType] videoCodec] == 'av01';
+        return (isHighRes && isVP9orAV1) || !isVP9orAV1;
     }];
     return [formats filteredArrayUsingPredicate:predicate];
 }
 
-static void hookFormats(MLABRPolicy *self) {
-    YTIHamplayerConfig *config = [self valueForKey:@"_hamplayerConfig"];
+static void hookFormatsBase(YTIHamplayerConfig *config) {
     if ([config.videoAbrConfig respondsToSelector:@selector(setPreferSoftwareHdrOverHardwareSdr:)])
         config.videoAbrConfig.preferSoftwareHdrOverHardwareSdr = YES;
     if ([config respondsToSelector:@selector(setDisableResolveOverlappingQualitiesByCodec:)])
@@ -37,16 +37,9 @@ static void hookFormats(MLABRPolicy *self) {
     filter.vp9.maxFps = MAX_FPS;
 }
 
-%hook MLHAMPlayerItem
-
-- (void)load {
-    MLInnerTubePlayerConfig *config = [self valueForKey:@"_config"];
-    YTIMediaCommonConfig *mediaCommonConfig = config.mediaCommonConfig;
-    mediaCommonConfig.useServerDrivenAbr = NO;
-    %orig;
+static void hookFormats(MLABRPolicy *self) {
+    hookFormatsBase([self valueForKey:@"_hamplayerConfig"]);
 }
-
-%end
 
 %hook MLABRPolicy
 
@@ -75,6 +68,53 @@ static void hookFormats(MLABRPolicy *self) {
 
 %end
 
+NSTimer *bufferingTimer = nil;
+
+%hook MLHAMQueuePlayer
+
+- (void)setState:(NSInteger)state {
+    %orig;
+    if (state == 5 || state == 6 || state == 8) {
+        if (bufferingTimer) {
+            [bufferingTimer invalidate];
+            bufferingTimer = nil;
+        }
+        __weak typeof(self) weakSelf = self;
+        bufferingTimer = [NSTimer scheduledTimerWithTimeInterval:2
+                            repeats:NO
+                            block:^(NSTimer *timer) {
+                                bufferingTimer = nil;
+                                __strong typeof(weakSelf) strongSelf = weakSelf;
+                                if (strongSelf) {
+                                    YTSingleVideoController *video = (YTSingleVideoController *)strongSelf.delegate;
+                                    YTLocalPlaybackController *playbackController = (YTLocalPlaybackController *)video.delegate;
+                                    [[%c(YTPlayerTapToRetryResponderEvent) eventWithFirstResponder:[playbackController parentResponder]] send];
+                                }
+                            }];
+    } else {
+        if (bufferingTimer) {
+            [bufferingTimer invalidate];
+            bufferingTimer = nil;
+        }
+    }
+}
+
+%end
+
+// %hook MLHAMPlayerItem
+
+// - (void)load {
+//     hookFormatsBase([self valueForKey:@"_hamplayerConfig"]);
+//     %orig;
+// }
+
+// - (void)loadWithInitialSeekRequired:(BOOL)initialSeekRequired initialSeekTime:(double)initialSeekTime {
+//     hookFormatsBase([self valueForKey:@"_hamplayerConfig"]);
+//     %orig;
+// }
+
+// %end
+
 %hook YTIHamplayerHotConfig
 
 %new(i@:)
@@ -101,7 +141,7 @@ static void hookFormats(MLABRPolicy *self) {
 
 %hook YTColdConfig
 
-- (BOOL)mainAppCoreClientIosStartupSchedulerQosFriendlyHardwareDecodeSupportedEnabled {
+- (BOOL)iosPlayerClientSharedConfigPopulateSwAv1MediaCapabilities {
     return YES;
 }
 
@@ -113,23 +153,47 @@ static void hookFormats(MLABRPolicy *self) {
     return YES;
 }
 
-%end
+- (BOOL)iosPlayerClientSharedConfigPostponeCabrPreferredFormatFiltering {
+    return YES;
+}
 
-%hook HAMDefaultABRPolicy
+- (BOOL)iosPlayerClientSharedConfigHamplayerPrepareVideoDecoderForAvsbdl {
+    return YES;
+}
 
-- (void)setFormats:(NSArray *)formats {
-    @try {
-        HAMDefaultABRPolicyConfig config = MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config");
-        config.softwareAV1Filter.maxArea = MAX_PIXELS;
-        config.softwareAV1Filter.maxFPS = MAX_FPS;
-        config.softwareVP9Filter.maxArea = MAX_PIXELS;
-        config.softwareVP9Filter.maxFPS = MAX_FPS;
-        MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config") = config;
-    } @catch (id ex) {}
-    %orig;
+- (BOOL)iosPlayerClientSharedConfigHamplayerAlwaysEnqueueDecodedSampleBuffersToAvsbdl {
+    return YES;
 }
 
 %end
+
+// %hook HAMDefaultABRPolicy
+
+// - (id)getSelectableFormatDataAndReturnError:(NSError **)error {
+//     @try {
+//         HAMDefaultABRPolicyConfig config = MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config");
+//         config.softwareAV1Filter.maxArea = MAX_PIXELS;
+//         config.softwareAV1Filter.maxFPS = MAX_FPS;
+//         config.softwareVP9Filter.maxArea = MAX_PIXELS;
+//         config.softwareVP9Filter.maxFPS = MAX_FPS;
+//         MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config") = config;
+//     } @catch (id ex) {}
+//     return %orig;
+// }
+
+// - (void)setFormats:(NSArray *)formats {
+//     @try {
+//         HAMDefaultABRPolicyConfig config = MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config");
+//         config.softwareAV1Filter.maxArea = MAX_PIXELS;
+//         config.softwareAV1Filter.maxFPS = MAX_FPS;
+//         config.softwareVP9Filter.maxArea = MAX_PIXELS;
+//         config.softwareVP9Filter.maxFPS = MAX_FPS;
+//         MSHookIvar<HAMDefaultABRPolicyConfig>(self, "_config") = config;
+//     } @catch (id ex) {}
+//     %orig;
+// }
+
+// %end
 
 %hook MLHLSStreamSelector
 
@@ -166,11 +230,14 @@ static void hookFormats(MLABRPolicy *self) {
 
 %hookf(int, sysctlbyname, const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
     if (strcmp(name, "kern.osversion") == 0) {
-        if (oldp)
+        int ret = %orig;
+        if (oldp) {
             strcpy((char *)oldp, IOS_BUILD);
-        *oldlenp = strlen(IOS_BUILD);
+            *oldlenp = strlen(IOS_BUILD);
+        }
+        return ret;
     }
-    return %orig(name, oldp, oldlenp, newp, newlen);
+    return %orig;
 }
 
 %end
